@@ -1,222 +1,343 @@
-import React, { useContext, useState, useMemo, useLayoutEffect } from "react";
+// screens/HomeScreen.js
+import React, {
+  useContext,
+  useMemo,
+  useCallback,
+  useState,
+} from "react";
 import {
   View,
   Text,
-  FlatList,
   StyleSheet,
-  Modal,
-  TextInput,
+  SafeAreaView,
+  FlatList,
   TouchableOpacity,
-  Alert,
-  Button,
-  Image,
   ActivityIndicator,
 } from "react-native";
-import DishCard from "../components/DishCard";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+
 import { DishContext } from "../context/DishContext";
 import { ThemeContext } from "../context/ThemeContext";
-import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
+import { LocationContext } from "../context/LocationContext";
+import { AuthContext } from "../context/AuthContext";
+import DishCard from "../components/DishCard";
 
-const CATEGORIES = ["All", "Filipino", "Japanese", "Italian", "Korean", "Drinks", "Dessert"];
+// Haversine distance in km
+const toRad = (deg) => (deg * Math.PI) / 180;
+const distanceKm = (lat1, lon1, lat2, lon2) => {
+  if (
+    lat1 == null ||
+    lon1 == null ||
+    lat2 == null ||
+    lon2 == null
+  ) {
+    return null;
+  }
 
-const HomeScreen = ({ navigation }) => {
-  const { dishes = [], addDish, editDish } = useContext(DishContext) || {};
-  const { styles: theme = {} } = useContext(ThemeContext) || {};
+  const R = 6371; // km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editingDish, setEditingDish] = useState(null);
-  const [dishName, setDishName] = useState("");
-  const [dishDescription, setDishDescription] = useState("");
-  const [dishCategory, setDishCategory] = useState("Filipino");
-  const [dishImage, setDishImage] = useState(null);
-  const [loadingImage, setLoadingImage] = useState(false);
-  const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState("All");
+const HomeScreen = () => {
+  const navigation = useNavigation();
 
-  const openAddModal = () => {
-    setEditingDish(null);
-    setDishName("");
-    setDishDescription("");
-    setDishCategory("Filipino");
-    setDishImage(null);
-    setModalVisible(true);
-  };
+  const { dishes } = useContext(DishContext);
+  const { styles: themeStyles } = useContext(ThemeContext);
+  const { location, status, error, requestLocation } =
+    useContext(LocationContext);
+  const { user } = useContext(AuthContext);
 
-  const openEditModal = (dish) => {
-    setEditingDish(dish);
-    setDishName(dish.name || "");
-    setDishDescription(dish.description || "");
-    setDishCategory(dish.category || "Filipino");
-    setDishImage(dish.image || null);
-    setModalVisible(true);
-  };
+  const [feedFilter, setFeedFilter] = useState("all"); // "all" | "mine"
 
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission required", "Please allow gallery access.");
-      return;
+  // Attach distance and sort by distance (if location available)
+  const sortedDishes = useMemo(() => {
+    if (!dishes || dishes.length === 0) return [];
+
+    if (!location) {
+      return dishes;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.5,
-    });
+    return dishes
+      .map((d) => {
+        const dKm = distanceKm(
+          location.latitude,
+          location.longitude,
+          d.latitude,
+          d.longitude
+        );
+        return {
+          ...d,
+          distanceKm: dKm,
+        };
+      })
+      .sort((a, b) => {
+        const ad =
+          typeof a.distanceKm === "number"
+            ? a.distanceKm
+            : Number.POSITIVE_INFINITY;
+        const bd =
+          typeof b.distanceKm === "number"
+            ? b.distanceKm
+            : Number.POSITIVE_INFINITY;
+        return ad - bd;
+      });
+  }, [dishes, location]);
 
-    if (!result.canceled) {
-      setLoadingImage(true);
-      const uri = result.assets[0].uri;
-      setDishImage(uri);
-      setLoadingImage(false);
+  // Apply filter: "For you" vs "My posts"
+  const filteredFeed = useMemo(() => {
+    if (feedFilter !== "mine") {
+      return sortedDishes;
     }
-  };
 
-  const handleSubmit = () => {
-    if (!dishName.trim() || !dishDescription.trim() || !dishImage) {
-      Alert.alert("Missing Info", "Please fill all fields and pick an image.");
-      return;
+    if (!user?.username) {
+      return sortedDishes;
     }
 
-    const newDish = {
-      name: dishName,
-      description: dishDescription,
-      category: dishCategory,
-      image: dishImage,
-    };
+    return sortedDishes.filter(
+      (d) =>
+        !d.ownerUsername || d.ownerUsername === user.username
+    );
+  }, [sortedDishes, feedFilter, user]);
 
-    if (editingDish?.id) {
-      editDish?.(editingDish.id, newDish);
-    } else {
-      addDish?.(newDish);
+  const handlePressLocation = useCallback(() => {
+    if (requestLocation) {
+      requestLocation();
     }
+  }, [requestLocation]);
 
-    setModalVisible(false);
-  };
-
-  const filtered = useMemo(() => {
-    let list = dishes || [];
-    if (activeCategory !== "All") list = list.filter((d) => d.category === activeCategory);
-    if (query.trim() !== "") {
-      const q = query.toLowerCase();
-      list = list.filter(
-        (d) =>
-          (d.name && d.name.toLowerCase().includes(q)) ||
-          (d.description && d.description.toLowerCase().includes(q))
-      );
-    }
-    return list;
-  }, [dishes, query, activeCategory]);
-
-  const renderItem = ({ item }) => <DishCard dish={item} onEdit={openEditModal} />;
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <View style={{ flexDirection: "row" }}>
-          <TouchableOpacity onPress={() => navigation.navigate("Profile")} style={{ marginRight: 15 }}>
-            <Ionicons name="person-circle-outline" size={28} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate("Settings")}>
-            <Ionicons name="settings-outline" size={28} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      ),
-    });
-  }, [navigation]);
+  const renderItem = ({ item }) => (
+    <DishCard
+      dish={item}
+      onPress={() =>
+        navigation.navigate("DishDetail", { dishId: item.id })
+      }
+    />
+  );
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background || "#fff" }]}>
-      {/* Search and Add */}
+    <SafeAreaView
+      style={[
+        styles.container,
+        { backgroundColor: themeStyles.background },
+      ]}
+    >
+      {/* Header */}
       <View style={styles.headerRow}>
-        <TextInput
-          placeholder="Search dishes..."
-          placeholderTextColor={theme.muted || "#888"}
-          style={[styles.searchInput, { backgroundColor: theme.card || "#eee", color: theme.text || "#000" }]}
-          value={query}
-          onChangeText={setQuery}
-        />
-        <Button title="Add" onPress={openAddModal} color="#ff6247" />
-      </View>
-
-      {/* Category Filter */}
-      <View style={styles.filterRow}>
-        {CATEGORIES.map((cat) => (
-          <TouchableOpacity
-            key={cat}
-            onPress={() => setActiveCategory(cat)}
-            style={[styles.catButton, { backgroundColor: activeCategory === cat ? theme.card || "#ccc" : "transparent", borderColor: theme.card || "#ccc" }]}
+        <View>
+          <Text
+            style={[
+              styles.headerTitle,
+              { color: themeStyles.text },
+            ]}
           >
-            <Text style={{ color: theme.text || "#000" }}>{cat}</Text>
-          </TouchableOpacity>
-        ))}
+            Dishcovery
+          </Text>
+          <Text
+            style={[
+              styles.headerSubtitle,
+              { color: themeStyles.muted },
+            ]}
+          >
+            Restaurants & dishes near you
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.locationChip,
+            {
+              borderColor: themeStyles.border,
+              backgroundColor: themeStyles.card,
+            },
+          ]}
+          onPress={handlePressLocation}
+          activeOpacity={0.8}
+        >
+          {status === "requesting" ? (
+            <ActivityIndicator size="small" />
+          ) : (
+            <>
+              <Ionicons
+                name={location ? "navigate" : "navigate-outline"}
+                size={16}
+                color={themeStyles.text}
+              />
+              <Text
+                style={[
+                  styles.locationChipText,
+                  { color: themeStyles.text },
+                ]}
+              >
+                {location ? "Sorting by distance" : "Use my location"}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
       </View>
 
-      {/* Dish List */}
+      {/* Location status messages */}
+      {status === "denied" && (
+        <Text style={[styles.statusText, { color: "#ff6247" }]}>
+          Turn on location permissions in settings to sort by nearest.
+        </Text>
+      )}
+      {error && status === "error" && (
+        <Text style={[styles.statusText, { color: "#ff6247" }]}>
+          {error}
+        </Text>
+      )}
+
+      {/* Feed filter */}
+      <View style={styles.filterRow}>
+        <View
+          style={[
+            styles.filterPillContainer,
+            { backgroundColor: themeStyles.card },
+          ]}
+        >
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              feedFilter === "all" && styles.filterPillActive,
+            ]}
+            onPress={() => setFeedFilter("all")}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                {
+                  color:
+                    feedFilter === "all"
+                      ? "#fff"
+                      : themeStyles.text,
+                },
+              ]}
+            >
+              For you
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              feedFilter === "mine" && styles.filterPillActive,
+            ]}
+            onPress={() => setFeedFilter("mine")}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                {
+                  color:
+                    feedFilter === "mine"
+                      ? "#fff"
+                      : themeStyles.text,
+                },
+              ]}
+            >
+              My posts
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <FlatList
-        data={filtered}
+        data={filteredFeed}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
         ListEmptyComponent={
-          <Text style={{ textAlign: "center", color: theme.muted || "#888", marginTop: 20 }}>
-            No dishes found.
-          </Text>
+          <View style={styles.emptyContainer}>
+            <Text style={{ color: themeStyles.muted }}>
+              No posts yet. Add your first dish!
+            </Text>
+          </View>
         }
       />
-
-      {/* Add/Edit Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent={true}>
-        <View style={[styles.modalContainer, { backgroundColor: theme.background || "#fff" }]}>
-          <Text style={[styles.modalTitle, { color: theme.text || "#000" }]}>{editingDish?.id ? "Edit Dish" : "Add New Dish"}</Text>
-
-          <TextInput
-            placeholder="Dish Name"
-            placeholderTextColor={theme.muted || "#888"}
-            style={[styles.input, { backgroundColor: theme.card || "#eee", color: theme.text || "#000" }]}
-            value={dishName}
-            onChangeText={setDishName}
-          />
-
-          <TextInput
-            placeholder="Description"
-            placeholderTextColor={theme.muted || "#888"}
-            style={[styles.input, { backgroundColor: theme.card || "#eee", color: theme.text || "#000", height: 80 }]}
-            value={dishDescription}
-            onChangeText={setDishDescription}
-            multiline
-          />
-
-          {/* Image Picker */}
-          <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
-            {loadingImage ? (
-              <ActivityIndicator size="large" color="#555" />
-            ) : dishImage ? (
-              <Image source={{ uri: dishImage }} style={styles.imagePreview} />
-            ) : (
-              <Text style={{ color: "#888" }}>Tap to select image</Text>
-            )}
-          </TouchableOpacity>
-
-          <Button title={editingDish?.id ? "Save Changes" : "Post Dish"} onPress={handleSubmit} color="#ff6247" />
-          <Button title="Cancel" color="red" onPress={() => setModalVisible(false)} />
-        </View>
-      </Modal>
-    </View>
+    </SafeAreaView>
   );
 };
 
-export default HomeScreen;
-
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  headerRow: { flexDirection: "row", padding: 10, alignItems: "center", gap: 8 },
-  searchInput: { flex: 1, padding: 10, borderRadius: 8 },
-  filterRow: { flexDirection: "row", paddingHorizontal: 10, paddingBottom: 6, flexWrap: "wrap" },
-  catButton: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1, marginRight: 8, marginBottom: 8 },
-  modalContainer: { flex: 1, padding: 16, justifyContent: "center" },
-  modalTitle: { fontSize: 22, textAlign: "center", marginBottom: 12 },
-  input: { borderRadius: 8, padding: 10, marginBottom: 12 },
-  imagePicker: { height: 180, borderRadius: 12, borderWidth: 1, borderColor: "#ddd", justifyContent: "center", alignItems: "center", marginBottom: 12, backgroundColor: "#f0f0f0" },
-  imagePreview: { width: "100%", height: "100%", borderRadius: 12 },
+  container: {
+    flex: 1,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+    justifyContent: "space-between",
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  locationChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  locationChipText: {
+    fontSize: 11,
+    marginLeft: 4,
+  },
+  statusText: {
+    fontSize: 11,
+    paddingHorizontal: 16,
+    marginBottom: 4,
+  },
+  filterRow: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  filterPillContainer: {
+    flexDirection: "row",
+    borderRadius: 999,
+    padding: 2,
+  },
+  filterPill: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 999,
+    alignItems: "center",
+  },
+  filterPillActive: {
+    backgroundColor: "#ff6247",
+  },
+  filterPillText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  listContent: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 100,
+  },
+  emptyContainer: {
+    marginTop: 32,
+    alignItems: "center",
+  },
 });
+
+export default HomeScreen;

@@ -1,205 +1,428 @@
-// ProfileScreen.js
-import React, { useState, useEffect, useContext } from "react";
+// screens/ProfileScreen.js
+import React, { useContext, useMemo, useState } from "react";
 import {
   View,
   Text,
   Image,
-  TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
+  TouchableOpacity,
   FlatList,
-  Modal,
   SafeAreaView,
-  ScrollView,
-  Animated,
+  Modal,
+  TextInput,
+  Share,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import * as ImagePicker from "expo-image-picker";
+
+import { AuthContext } from "../context/AuthContext";
 import { ThemeContext } from "../context/ThemeContext";
+import { DishContext } from "../context/DishContext";
 
 const ProfileScreen = () => {
-  const { styles: theme } = useContext(ThemeContext) || {};
+  const navigation = useNavigation();
 
-  const [avatar, setAvatar] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("Posts");
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedPost, setSelectedPost] = useState(null);
-  const [avatarScale] = useState(new Animated.Value(1));
+  const { user, updateProfile } = useContext(AuthContext);
+  const { styles: themeStyles, theme } = useContext(ThemeContext);
+  const { dishes = [] } = useContext(DishContext);
 
-  const userPosts = [
-    { id: 1, image: require("../assets/dish1.jpg"), title: "Spicy Ramen", likes: 120, comments: ["Looks tasty!", "Yum!"] },
-    { id: 2, image: require("../assets/dish2.jpg"), title: "Chocolate Cake", likes: 89, comments: ["Sweet!", "Delicious!"] },
-    { id: 3, image: require("../assets/dish3.jpg"), title: "Sushi Platter", likes: 200, comments: ["I want some!", "So fresh!"] },
-    { id: 4, image: require("../assets/dish4.jpg"), title: "Adobo", likes: 76, comments: ["Classic!", "Love it!"] },
-    { id: 5, image: require("../assets/dish5.jpg"), title: "Halo-halo", likes: 150, comments: ["Refreshing!", "Perfect for summer!"] },
-  ];
+  const [activeTab, setActiveTab] = useState("posts");
+  const [editVisible, setEditVisible] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState(
+    user?.displayName || user?.username || ""
+  );
+  const [editBio, setEditBio] = useState(
+    user?.bio ||
+      "Sharing my favorite Filipino & Japanese dishes 🍣🍜"
+  );
 
-  const likedPosts = [
-    { id: 6, image: require("../assets/dish6.jpg"), title: "Pancit Canton", likes: 98, comments: ["Nostalgic!", "Tasty!"] },
-    { id: 7, image: require("../assets/dish7.jpg"), title: "Lechon", likes: 210, comments: ["So crispy!", "Yummy!"] },
-  ];
+  const isDark = theme === "dark";
 
-  const commentedPosts = [
-    { id: 8, image: require("../assets/dish8.jpg"), title: "Burger", likes: 45, comments: ["Looks good!"] },
-  ];
+  const displayName =
+    user?.displayName || user?.username || "Food Lover";
+  const handleText =
+    "@" + (user?.username || "foodlover").toLowerCase();
+  const avatarInitial = displayName.charAt(0).toUpperCase();
+  const avatarUri = user?.avatarUri || null;
 
-  useEffect(() => {
-    loadAvatar();
-  }, []);
+  const myPosts = useMemo(() => {
+    if (!dishes) return [];
+    if (!user?.username) return dishes;
 
-  const loadAvatar = async () => {
-    try {
-      const saved = await AsyncStorage.getItem("avatar");
-      if (saved) setAvatar(saved);
-    } catch (err) {
-      console.log("Error loading avatar:", err);
-    }
+    return dishes.filter(
+      (d) =>
+        !d.ownerUsername || d.ownerUsername === user.username
+    );
+  }, [dishes, user]);
+
+  const likedPosts = useMemo(
+    () => (dishes || []).filter((d) => d.liked),
+    [dishes]
+  );
+
+  const postsCount = myPosts.length;
+  const likesCount = myPosts.reduce(
+    (sum, d) => sum + (typeof d.likes === "number" ? d.likes : 0),
+    0
+  );
+  const followingCount = 42; // demo
+
+  const dataToRender =
+    activeTab === "posts" ? myPosts : likedPosts;
+
+  const handleOpenEdit = () => {
+    setEditDisplayName(displayName);
+    setEditBio(
+      user?.bio ||
+        "Sharing my favorite Filipino & Japanese dishes 🍣🍜"
+    );
+    setEditVisible(true);
   };
 
-  const pickImage = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        alert("Permission required to access gallery");
-        return;
-      }
+  const handleSaveEdit = () => {
+    updateProfile({
+      displayName: editDisplayName.trim() || user?.username,
+      bio: editBio.trim(),
+    });
+    setEditVisible(false);
+  };
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.7,
+  const handleShareProfile = async () => {
+    try {
+      const username = user?.username || "foodlover";
+      const link = `https://dishcovery.app/u/${username}`;
+      await Share.share({
+        title: "Check out my Dishcovery profile",
+        message: `Check out my food finds on Dishcovery: ${link}`,
       });
-
-      if (!result.canceled) {
-        setLoading(true);
-        const uri = result.assets[0].uri;
-        setAvatar(uri);
-        await AsyncStorage.setItem("avatar", uri);
-        setLoading(false);
-      }
-    } catch (err) {
-      console.log("Error picking image:", err);
-      setLoading(false);
+    } catch (e) {
+      console.warn("Error sharing profile", e);
     }
   };
 
-  const handleAvatarPress = () => {
-    Animated.sequence([
-      Animated.timing(avatarScale, { toValue: 0.85, duration: 100, useNativeDriver: true }),
-      Animated.timing(avatarScale, { toValue: 1, duration: 100, useNativeDriver: true }),
-    ]).start(() => pickImage());
+  const handleChangeAvatar = async () => {
+    const { status } =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      alert("Permission to access gallery is required.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.length > 0) {
+      const uri = result.assets[0].uri;
+      updateProfile({ avatarUri: uri });
+    }
   };
 
-  const postsToDisplay = activeTab === "Posts" ? userPosts : activeTab === "Liked" ? likedPosts : commentedPosts;
+  const renderGridItem = ({ item }) => {
+    const imageSource =
+      typeof item.image === "string"
+        ? { uri: item.image }
+        : item.image;
 
-  const openModal = (post) => {
-    setSelectedPost(post);
-    setModalVisible(true);
-  };
-
-  const renderGridItem = ({ item }) => (
-    <TouchableOpacity onPress={() => openModal(item)} style={{ position: "relative", marginBottom: 4 }}>
-      <Image source={item.image} style={styles.gridImage} />
-      <View style={styles.overlay}>
-        <View style={styles.overlayItem}>
-          <Ionicons name="heart" size={14} color="#fff" />
-          <Text style={styles.overlayText}>{item.likes}</Text>
-        </View>
-        <View style={styles.overlayItem}>
-          <Ionicons name="chatbubble" size={14} color="#fff" />
-          <Text style={styles.overlayText}>{item.comments?.length || 0}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const ListHeader = () => (
-    <View>
-      <Animated.View style={[styles.avatarWrapper, { transform: [{ scale: avatarScale }] }]}>
-        {loading ? (
-          <ActivityIndicator size="large" color="#555" />
-        ) : (
-          <Image
-            source={avatar ? { uri: avatar } : require("../assets/default-avatar.jpeg")}
-            style={styles.avatar}
-          />
+    return (
+      <TouchableOpacity
+        style={styles.gridItem}
+        activeOpacity={0.85}
+        onPress={() =>
+          navigation.navigate("DishDetail", { dishId: item.id })
+        }
+      >
+        {imageSource && (
+          <Image source={imageSource} style={styles.gridImage} />
         )}
-        <TouchableOpacity style={styles.editButton} onPress={handleAvatarPress}>
-          <Ionicons name="camera" size={24} color="#fff" />
-        </TouchableOpacity>
-      </Animated.View>
-
-      <Text style={[styles.username, { color: theme?.text || "#000" }]}>Foodie123</Text>
-
-      <View style={styles.statsContainer}>
-        <View style={styles.statBox}>
-          <Text style={styles.statNumber}>50</Text>
-          <Text style={styles.statLabel}>Posts</Text>
+        <View style={styles.gridOverlay}>
+          <Ionicons name="heart" size={12} color="#fff" />
+          <Text style={styles.gridOverlayText}>
+            {item.likes ?? 0}
+          </Text>
         </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statNumber}>1.2k</Text>
-          <Text style={styles.statLabel}>Followers</Text>
-        </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statNumber}>180</Text>
-          <Text style={styles.statLabel}>Following</Text>
-        </View>
-      </View>
-
-      <View style={styles.tabContainer}>
-        {["Posts", "Liked", "Comments"].map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tabButton, activeTab === tab && styles.activeTab]}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme?.background || "#f9f9f9" }]}>
+    <SafeAreaView
+      style={[
+        styles.container,
+        { backgroundColor: themeStyles.background },
+      ]}
+    >
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.leftHeader}>
+          <Text style={[styles.username, { color: themeStyles.text }]}>
+            {displayName}
+          </Text>
+          <Text style={[styles.handle, { color: themeStyles.muted }]}>
+            {handleText}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.headerIcon}>
+          <Ionicons
+            name="qr-code-outline"
+            size={22}
+            color={themeStyles.text}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.headerIcon}>
+          <Ionicons
+            name="ellipsis-vertical"
+            size={20}
+            color={themeStyles.text}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Profile Info */}
+      <View style={styles.profileRow}>
+        <TouchableOpacity onPress={handleChangeAvatar}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarLetter}>
+              <Text style={styles.avatarLetterText}>
+                {avatarInitial}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <View className="stats" style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <Text style={[styles.statNumber, { color: themeStyles.text }]}>
+              {postsCount}
+            </Text>
+            <Text style={[styles.statLabel, { color: themeStyles.muted }]}>
+              Posts
+            </Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={[styles.statNumber, { color: themeStyles.text }]}>
+              {likesCount}
+            </Text>
+            <Text style={[styles.statLabel, { color: themeStyles.muted }]}>
+              Likes
+            </Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={[styles.statNumber, { color: themeStyles.text }]}>
+              {followingCount}
+            </Text>
+            <Text style={[styles.statLabel, { color: themeStyles.muted }]}>
+              Following
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Bio */}
+      <View style={styles.bioContainer}>
+        <Text style={[styles.bioName, { color: themeStyles.text }]}>
+          {displayName}
+        </Text>
+        <Text style={[styles.bioText, { color: themeStyles.muted }]}>
+          {user?.bio ||
+            "Sharing my favorite Filipino & Japanese dishes 🍣🍜"}
+        </Text>
+      </View>
+
+      {/* Actions */}
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={[
+            styles.actionButton,
+            { backgroundColor: isDark ? "#333" : "#eee" },
+          ]}
+          onPress={handleOpenEdit}
+        >
+          <Text style={[styles.actionText, { color: themeStyles.text }]}>
+            Edit profile
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.actionButton,
+            { backgroundColor: isDark ? "#333" : "#eee" },
+          ]}
+          onPress={handleShareProfile}
+        >
+          <Text style={[styles.actionText, { color: themeStyles.text }]}>
+            Share profile
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.actionIconButton,
+            { backgroundColor: isDark ? "#333" : "#eee" },
+          ]}
+        >
+          <Ionicons
+            name="bookmark-outline"
+            size={18}
+            color={themeStyles.text}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabsRow}>
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            activeTab === "posts" && styles.activeTabButton,
+          ]}
+          onPress={() => setActiveTab("posts")}
+        >
+          <Ionicons
+            name="grid-outline"
+            size={20}
+            color={
+              activeTab === "posts" ? "#ff6247" : themeStyles.muted
+            }
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            activeTab === "liked" && styles.activeTabButton,
+          ]}
+          onPress={() => setActiveTab("liked")}
+        >
+          <Ionicons
+            name="heart-outline"
+            size={20}
+            color={
+              activeTab === "liked" ? "#ff6247" : themeStyles.muted
+            }
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Grid of dishes */}
       <FlatList
-        data={postsToDisplay}
-        renderItem={renderGridItem}
+        data={dataToRender}
         keyExtractor={(item) => item.id.toString()}
         numColumns={3}
-        columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 4 }}
-        ListHeaderComponent={ListHeader}
-        contentContainerStyle={{ padding: 16 }}
+        columnWrapperStyle={styles.gridRow}
+        renderItem={renderGridItem}
+        contentContainerStyle={{
+          paddingHorizontal: 4,
+          paddingBottom: 80,
+        }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={{ color: themeStyles.muted }}>
+              {activeTab === "posts"
+                ? "You haven't posted any dishes yet."
+                : "No liked dishes yet."}
+            </Text>
+          </View>
+        }
+        showsVerticalScrollIndicator={false}
       />
+      {/* Edit Profile Modal (same as before, plus profile fields) */}
+      <Modal
+        visible={editVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalContent,
+              { backgroundColor: themeStyles.card },
+            ]}
+          >
+            <Text
+              style={[
+                styles.modalTitle,
+                { color: themeStyles.text },
+              ]}
+            >
+              Edit profile
+            </Text>
 
-      {/* Modal for post detail */}
-      <Modal visible={modalVisible} animationType="slide" transparent={false}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
-          <TouchableOpacity style={{ padding: 16 }} onPress={() => setModalVisible(false)}>
-            <Ionicons name="close" size={28} color="#fff" />
-          </TouchableOpacity>
-          {selectedPost && (
-            <ScrollView>
-              <Image source={selectedPost.image} style={{ width: "100%", height: 300 }} resizeMode="contain" />
-              <View style={{ padding: 16 }}>
-                <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold" }}>{selectedPost.title}</Text>
-                <Text style={{ color: "#fff", marginTop: 8 }}>{selectedPost.likes} Likes</Text>
+            <Text
+              style={[
+                styles.modalLabel,
+                { color: themeStyles.muted },
+              ]}
+            >
+              Display name
+            </Text>
+            <TextInput
+              value={editDisplayName}
+              onChangeText={setEditDisplayName}
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: themeStyles.background,
+                  color: themeStyles.text,
+                },
+              ]}
+              placeholder="Your name"
+              placeholderTextColor={themeStyles.muted}
+            />
 
-                <Text style={{ color: "#fff", marginTop: 12, fontWeight: "bold" }}>Comments:</Text>
-                {selectedPost.comments?.length > 0 ? (
-                  selectedPost.comments.map((c, i) => (
-                    <Text key={i} style={{ color: "#fff", marginTop: 4 }}>
-                      - {c}
-                    </Text>
-                  ))
-                ) : (
-                  <Text style={{ color: "#fff", marginTop: 4 }}>No comments yet.</Text>
-                )}
-              </View>
-            </ScrollView>
-          )}
-        </SafeAreaView>
+            <Text
+              style={[
+                styles.modalLabel,
+                { color: themeStyles.muted, marginTop: 8 },
+              ]}
+            >
+              Bio
+            </Text>
+            <TextInput
+              value={editBio}
+              onChangeText={setEditBio}
+              style={[
+                styles.modalInput,
+                styles.modalInputMultiline,
+                {
+                  backgroundColor: themeStyles.background,
+                  color: themeStyles.text,
+                },
+              ]}
+              placeholder="Tell people about your favorite eats..."
+              placeholderTextColor={themeStyles.muted}
+              multiline
+            />
+
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonGhost]}
+                onPress={() => setEditVisible(false)}
+              >
+                <Text
+                  style={[
+                    styles.modalButtonGhostText,
+                    { color: themeStyles.muted },
+                  ]}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonPrimary]}
+                onPress={handleSaveEdit}
+              >
+                <Text style={styles.modalButtonPrimaryText}>
+                  Save
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -207,23 +430,149 @@ const ProfileScreen = () => {
 
 export default ProfileScreen;
 
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  avatarWrapper: { position: "relative", alignItems: "center", marginBottom: 12 },
-  avatar: { width: 130, height: 130, borderRadius: 65, borderWidth: 2, borderColor: "#ccc" },
-  editButton: { position: "absolute", bottom: 0, right: 0, backgroundColor: "#ff6247", padding: 10, borderRadius: 25, borderWidth: 2, borderColor: "#fff" },
-  username: { fontSize: 20, fontWeight: "bold", textAlign: "center", marginBottom: 12 },
-  statsContainer: { flexDirection: "row", justifyContent: "space-around", marginVertical: 12 },
-  statBox: { alignItems: "center" },
-  statNumber: { fontWeight: "bold", fontSize: 16 },
-  statLabel: { fontSize: 12, color: "#888" },
-  tabContainer: { flexDirection: "row", justifyContent: "center", marginVertical: 12 },
-  tabButton: { paddingHorizontal: 20, paddingVertical: 8, marginHorizontal: 4, borderBottomWidth: 2, borderBottomColor: "transparent" },
-  activeTab: { borderBottomColor: "#ff6247" },
-  tabText: { fontSize: 16, color: "#888" },
-  activeTabText: { color: "#ff6247", fontWeight: "bold" },
-  gridImage: { width: 110, height: 110, borderRadius: 8 },
-  overlay: { position: "absolute", bottom: 4, left: 4, flexDirection: "row" },
-  overlayItem: { flexDirection: "row", alignItems: "center", marginRight: 8, backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 4, paddingVertical: 2, borderRadius: 6 },
-  overlayText: { color: "#fff", fontSize: 12, marginLeft: 2 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 4,
+  },
+  leftHeader: { flex: 1 },
+  username: { fontSize: 18, fontWeight: "bold" },
+  handle: { fontSize: 12, marginTop: 2 },
+  headerIcon: { paddingHorizontal: 6 },
+  profileRow: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    marginTop: 16,
+    alignItems: "center",
+  },
+  avatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 40,
+    backgroundColor: "#333",
+    marginRight: 24,
+  },
+  avatarLetter: {
+    width: 72,
+    height: 72,
+    borderRadius: 40,
+    backgroundColor: "#ff6247",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 24,
+  },
+  avatarLetterText: {
+    color: "#fff",
+    fontSize: 28,
+    fontWeight: "700",
+  },
+  statsRow: {
+    flexDirection: "row",
+    flex: 1,
+    justifyContent: "space-between",
+  },
+  statBox: { alignItems: "center", flex: 1 },
+  statNumber: { fontSize: 16, fontWeight: "bold" },
+  statLabel: { fontSize: 12, marginTop: 4 },
+  bioContainer: { paddingHorizontal: 16, marginTop: 10 },
+  bioName: { fontWeight: "600", marginBottom: 4 },
+  bioText: { fontSize: 13 },
+  actionsRow: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  actionButton: {
+    flex: 1,
+    height: 34,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  actionIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  actionText: { fontSize: 13, fontWeight: "500" },
+  tabsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: "#333",
+  },
+  tabButton: { paddingVertical: 10, paddingHorizontal: 28 },
+  activeTabButton: { borderBottomWidth: 2, borderBottomColor: "#ff6247" },
+  gridRow: { justifyContent: "space-between", marginBottom: 4 },
+  gridItem: {
+    marginHorizontal: 2,
+    marginBottom: 4,
+    position: "relative",
+  },
+  gridImage: { width: 118, height: 118, borderRadius: 8 },
+  gridOverlay: {
+    position: "absolute",
+    bottom: 6,
+    left: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  gridOverlayText: { color: "#fff", fontSize: 11, marginLeft: 3 },
+  emptyContainer: { paddingTop: 32, alignItems: "center" },
+  // modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  modalTitle: { fontSize: 18, fontWeight: "700", marginBottom: 12 },
+  modalLabel: { fontSize: 12, marginBottom: 4 },
+  modalInput: {
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
+  modalInputMultiline: {
+    minHeight: 70,
+    textAlignVertical: "top",
+  },
+  modalButtonsRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 16,
+  },
+  modalButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    marginLeft: 8,
+  },
+  modalButtonGhost: { backgroundColor: "transparent" },
+  modalButtonGhostText: { fontSize: 13 },
+  modalButtonPrimary: { backgroundColor: "#ff6247" },
+  modalButtonPrimaryText: {
+    fontSize: 13,
+    color: "#fff",
+    fontWeight: "600",
+  },
 });

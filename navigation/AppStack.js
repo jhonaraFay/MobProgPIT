@@ -1,46 +1,51 @@
+// navigation/AppStack.js
 import React, { useContext } from "react";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
+
+import SplashScreen from "../screens/SplashScreen";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
-import HomeScreen from "../screens/HomeScreen";
-import SettingsScreen from "../screens/SettingsScreen";
-import ProfileScreen from "../screens/ProfileScreen";
+import DishDetailScreen from "../screens/DishDetailScreen";
+import LocationPickerScreen from "../screens/LocationPickerScreen";
 
+
+import TabNavigator from "./TabNavigator";
 import { AuthContext } from "../context/AuthContext";
 
+
 const Stack = createNativeStackNavigator();
+
 
 const AppStack = () => {
   const { user } = useContext(AuthContext);
 
+
   return (
     <NavigationContainer>
-      <Stack.Navigator>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {/* SPLASH ALWAYS FIRST */}
+        <Stack.Screen name="Splash" component={SplashScreen} />
+
+
+        {/* IF NOT LOGGED IN → AUTH SCREENS */}
         {!user ? (
-          // Auth flow
           <>
-            <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Register" component={RegisterScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
           </>
         ) : (
-          // App flow
+          /* IF LOGGED IN → MAIN TABS + DETAIL + LOCATION PICKER */
           <>
+            <Stack.Screen name="MainTabs" component={TabNavigator} />
             <Stack.Screen
-              name="Home"
-              component={HomeScreen}
-              options={{ title: "Dishes", headerStyle: { backgroundColor: "#ff6247" }, headerTintColor: "#fff" }}
+              name="DishDetail"
+              component={DishDetailScreen}
             />
             <Stack.Screen
-              name="Settings"
-              component={SettingsScreen}
-              options={{ title: "Settings", headerStyle: { backgroundColor: "#ff6247" }, headerTintColor: "#fff" }}
-            />
-            <Stack.Screen
-              name="Profile"
-              component={ProfileScreen}
-              options={{ title: "Profile", headerStyle: { backgroundColor: "#ff6247" }, headerTintColor: "#fff" }}
+              name="LocationPicker"
+              component={LocationPickerScreen}
             />
           </>
         )}
@@ -49,4 +54,8 @@ const AppStack = () => {
   );
 };
 
+
 export default AppStack;
+
+
+

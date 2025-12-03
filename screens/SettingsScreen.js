@@ -1,4 +1,4 @@
-// SettingsScreen.js
+// screens/SettingsScreen.js
 import React, { useContext, useState } from "react";
 import {
   View,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
   Switch,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -15,8 +16,9 @@ import { ThemeContext } from "../context/ThemeContext";
 import { AuthContext } from "../context/AuthContext";
 
 const SettingsScreen = () => {
-  const { theme, toggleTheme, styles: themeStyles } = useContext(ThemeContext) || {};
-  const { logout } = useContext(AuthContext);
+  const { theme, toggleTheme, styles: themeStyles } =
+    useContext(ThemeContext) || {};
+  const { user, logout } = useContext(AuthContext);
 
   // Collapsible states
   const [notifOpen, setNotifOpen] = useState(false);
@@ -26,6 +28,11 @@ const SettingsScreen = () => {
   // Fake switches
   const [pushNotif, setPushNotif] = useState(true);
   const [emailNotif, setEmailNotif] = useState(false);
+
+  const displayName =
+    user?.displayName || user?.username || "User";
+  const avatarInitial = displayName.charAt(0).toUpperCase();
+  const avatarUri = user?.avatarUri || null;
 
   const handleLogout = () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
@@ -38,21 +45,60 @@ const SettingsScreen = () => {
     <SafeAreaView
       style={[
         styles.container,
-        { backgroundColor: themeStyles?.background || "#fff" },
+        { backgroundColor: themeStyles?.background || "#000" },
       ]}
     >
       <ScrollView contentContainerStyle={{ padding: 16 }}>
+        {/* Header with avatar */}
+        <View style={styles.headerRow}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarLetter}>
+              <Text style={styles.avatarLetterText}>
+                {avatarInitial}
+              </Text>
+            </View>
+          )}
+          <View>
+            <Text
+              style={[
+                styles.name,
+                { color: themeStyles?.text || "#fff" },
+              ]}
+            >
+              {displayName}
+            </Text>
+            <Text style={{ color: themeStyles?.muted || "#aaa" }}>
+              @{(user?.username || "user").toLowerCase()}
+            </Text>
+          </View>
+        </View>
+
         {/* Title */}
-        <Text style={[styles.title, { color: themeStyles?.text }]}>
+        <Text
+          style={[
+            styles.title,
+            { color: themeStyles?.text || "#fff" },
+          ]}
+        >
           Settings
         </Text>
 
         {/* NOTIFICATION SETTINGS */}
         <TouchableOpacity
           onPress={() => setNotifOpen(!notifOpen)}
-          style={[styles.sectionHeader, { backgroundColor: themeStyles?.card }]}
+          style={[
+            styles.sectionHeader,
+            { backgroundColor: themeStyles?.card || "#111" },
+          ]}
         >
-          <Text style={[styles.sectionTitle, { color: themeStyles?.text }]}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              { color: themeStyles?.text || "#fff" },
+            ]}
+          >
             Notifications
           </Text>
           <Text style={styles.arrow}>{notifOpen ? "▲" : "▼"}</Text>
@@ -61,14 +107,24 @@ const SettingsScreen = () => {
         {notifOpen && (
           <View style={styles.sectionContent}>
             <View style={styles.switchRow}>
-              <Text style={[styles.switchLabel, { color: themeStyles?.text }]}>
+              <Text
+                style={[
+                  styles.switchLabel,
+                  { color: themeStyles?.text || "#fff" },
+                ]}
+              >
                 Push Notifications
               </Text>
               <Switch value={pushNotif} onValueChange={setPushNotif} />
             </View>
 
             <View style={styles.switchRow}>
-              <Text style={[styles.switchLabel, { color: themeStyles?.text }]}>
+              <Text
+                style={[
+                  styles.switchLabel,
+                  { color: themeStyles?.text || "#fff" },
+                ]}
+              >
                 Email Alerts
               </Text>
               <Switch value={emailNotif} onValueChange={setEmailNotif} />
@@ -79,9 +135,17 @@ const SettingsScreen = () => {
         {/* APP SETTINGS */}
         <TouchableOpacity
           onPress={() => setAppOpen(!appOpen)}
-          style={[styles.sectionHeader, { backgroundColor: themeStyles?.card }]}
+          style={[
+            styles.sectionHeader,
+            { backgroundColor: themeStyles?.card || "#111" },
+          ]}
         >
-          <Text style={[styles.sectionTitle, { color: themeStyles?.text }]}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              { color: themeStyles?.text || "#fff" },
+            ]}
+          >
             App Settings
           </Text>
           <Text style={styles.arrow}>{appOpen ? "▲" : "▼"}</Text>
@@ -92,21 +156,35 @@ const SettingsScreen = () => {
             <TouchableOpacity
               style={[
                 styles.actionButton,
-                { backgroundColor: themeStyles?.card },
+                { backgroundColor: themeStyles?.card || "#111" },
               ]}
               onPress={toggleTheme}
             >
-              <Text style={{ color: themeStyles?.text }}>
+              <Text style={{ color: themeStyles?.text || "#fff" }}>
                 Switch to {theme === "light" ? "Dark" : "Light"} Mode
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton}>
-              <Text style={{ color: themeStyles?.text }}>Clear Cache</Text>
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                { backgroundColor: themeStyles?.card || "#111" },
+              ]}
+            >
+              <Text style={{ color: themeStyles?.text || "#fff" }}>
+                Clear Cache
+              </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton}>
-              <Text style={{ color: themeStyles?.text }}>Reset App Data</Text>
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                { backgroundColor: themeStyles?.card || "#111" },
+              ]}
+            >
+              <Text style={{ color: themeStyles?.text || "#fff" }}>
+                Reset App Data
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -114,9 +192,17 @@ const SettingsScreen = () => {
         {/* ABOUT */}
         <TouchableOpacity
           onPress={() => setAboutOpen(!aboutOpen)}
-          style={[styles.sectionHeader, { backgroundColor: themeStyles?.card }]}
+          style={[
+            styles.sectionHeader,
+            { backgroundColor: themeStyles?.card || "#111" },
+          ]}
         >
-          <Text style={[styles.sectionTitle, { color: themeStyles?.text }]}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              { color: themeStyles?.text || "#fff" },
+            ]}
+          >
             About
           </Text>
           <Text style={styles.arrow}>{aboutOpen ? "▲" : "▼"}</Text>
@@ -124,17 +210,46 @@ const SettingsScreen = () => {
 
         {aboutOpen && (
           <View style={styles.sectionContent}>
-            <Text style={[styles.aboutText, { color: themeStyles?.text }]}>
-              Foodie Recipe App v1.0.0
+            <Text
+              style={[
+                styles.aboutText,
+                { color: themeStyles?.text || "#fff" },
+              ]}
+            >
+              Dishcovery v1.0.0
             </Text>
-            <Text style={[styles.aboutText, { color: themeStyles?.muted }]}>
+            <Text
+              style={[
+                styles.aboutText,
+                { color: themeStyles?.muted || "#aaa" },
+              ]}
+            >
               Created for demo and educational purposes.
+            </Text>
+            <Text
+              style={[
+                styles.aboutText,
+                { color: themeStyles?.muted || "#aaa", marginTop: 4 },
+              ]}
+            >
+              Developed by: Your Group Name
+            </Text>
+            <Text
+              style={[
+                styles.aboutText,
+                { color: themeStyles?.muted || "#aaa", marginTop: 2 },
+              ]}
+            >
+              Made with ❤️ using React Native & Expo.
             </Text>
           </View>
         )}
 
         {/* LOGOUT BUTTON */}
-        <TouchableOpacity style={[styles.logoutButton]} onPress={handleLogout}>
+        <TouchableOpacity
+          style={[styles.logoutButton]}
+          onPress={handleLogout}
+        >
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -147,10 +262,40 @@ export default SettingsScreen;
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+  },
+  avatarLetter: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#ff6247",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  avatarLetterText: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  name: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "bold",
-    marginBottom: 20,
+    marginBottom: 12,
   },
 
   sectionHeader: {

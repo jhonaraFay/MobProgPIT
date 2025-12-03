@@ -1,182 +1,603 @@
-import React, { useState } from "react";
+// screens/AddDishScreen.js
+import React, { useState, useContext } from "react";
 import {
   View,
   Text,
-  TextInput,
-  Button,
   StyleSheet,
-  Image,
-  TouchableOpacity,
+  SafeAreaView,
   ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Image,
   Alert,
+  ActivityIndicator,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { useNavigation } from "@react-navigation/native";
 
-const categories = ["Filipino", "Korean", "Drinks", "Dessert"];
 
-export default function AddDishScreen({ navigation }) {
+import { ThemeContext } from "../context/ThemeContext";
+import { DishContext } from "../context/DishContext";
+import { LocationContext } from "../context/LocationContext";
+import { AuthContext } from "../context/AuthContext";
+
+
+const AddDishScreen = () => {
+  const navigation = useNavigation();
+
+
+  const { styles: themeStyles } = useContext(ThemeContext);
+  const { addDish } = useContext(DishContext);
+  const { requestLocation, status } = useContext(LocationContext);
+  const { user } = useContext(AuthContext);
+
+
+  const [imageUri, setImageUri] = useState(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState(categories[0]);
-  const [image, setImage] = useState(null);
+  const [category, setCategory] = useState("");
+  const [placeName, setPlaceName] = useState("");
+  const [address, setAddress] = useState("");
+  const [coords, setCoords] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const pickImage = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert("Permission Denied", "Permission to access gallery is required!");
-      return;
-    }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.5,
-    });
+  const pickImage = async (fromCamera = false) => {
+    try {
+      if (fromCamera) {
+        const { status } =
+          await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permission", "Camera permission is required.");
+          return;
+        }
+      } else {
+        const { status } =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permission", "Gallery permission is required.");
+          return;
+        }
+      }
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImage(result.assets[0].uri);
+
+      const result = fromCamera
+        ? await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+          });
+
+
+      if (!result.canceled && result.assets?.length > 0) {
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (e) {
+      console.warn("Error picking image", e);
+      Alert.alert("Error", "Failed to pick image.");
     }
   };
 
-  const handleAddDish = () => {
-    if (!name.trim() || !description.trim() || !image) {
-      Alert.alert("Missing Info", "Please fill all fields and pick an image.");
+
+  /**
+   * Instead of auto-attaching our current location,
+   * this now:
+   *  1) optionally asks for current location (just to center the map)
+   *  2) navigates to LocationPickerScreen
+   *  3) when user taps "Save location" there, it calls our onPick callback
+   *     and we setCoords() here.
+   */
+  const handleChooseLocation = async () => {
+    try {
+      let initialCenter = coords;
+
+
+      // If we don't already have coords, try to get current location just to center the map
+      if (!initialCenter) {
+        const result = await requestLocation();
+        if (result) {
+          initialCenter = result;
+        }
+      }
+
+
+      navigation.navigate("LocationPicker", {
+        initialCoords: initialCenter,
+        onPick: (picked) => {
+          setCoords(picked);
+          Alert.alert(
+            "Location selected",
+            "The map location has been attached to this post."
+          );
+        },
+      });
+    } catch (e) {
+      console.warn("Error choosing location", e);
+    }
+  };
+
+
+  const handleSubmit = () => {
+    if (!imageUri) {
+      Alert.alert(
+        "Missing photo",
+        "Please add a photo of the dish."
+      );
+      return;
+    }
+    if (!name.trim() || !placeName.trim()) {
+      Alert.alert(
+        "Missing fields",
+        "Dish name and place name are required."
+      );
       return;
     }
 
-    // Normally, send to backend or context here
-    Alert.alert("Success!", `Dish "${name}" added successfully!`);
 
-    // Reset form
-    setName("");
-    setDescription("");
-    setCategory(categories[0]);
-    setImage(null);
-    navigation.goBack();
+    setSubmitting(true);
+    try {
+      addDish({
+        name: name.trim(),
+        description: description.trim(),
+        category: category.trim(),
+        placeName: placeName.trim(),
+        address: address.trim(),
+        latitude: coords?.latitude ?? null,
+        longitude: coords?.longitude ?? null,
+        image: imageUri,
+        ownerUsername: user?.username || "guest",
+      });
+
+
+      Alert.alert("Success", "Your dish has been added!", [
+        { text: "OK", onPress: () => navigation.navigate("Home") },
+      ]);
+
+
+      // reset form
+      setImageUri(null);
+      setName("");
+      setDescription("");
+      setCategory("");
+      setPlaceName("");
+      setAddress("");
+      setCoords(null);
+    } catch (e) {
+      console.warn("Error adding dish", e);
+      Alert.alert("Error", "Failed to add dish.");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
+    <SafeAreaView
+      style={[
+        styles.container,
+        { backgroundColor: themeStyles.background },
+      ]}
     >
-      <Text style={styles.heading}>Add New Dish</Text>
+      {/* Header with back button */}
+      <View style={styles.headerRow}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          <Ionicons
+            name="chevron-back"
+            size={24}
+            color={themeStyles.text}
+          />
+        </TouchableOpacity>
+        <Text
+          style={[styles.headerTitle, { color: themeStyles.text }]}
+        >
+          Add a dish
+        </Text>
+        <View style={{ width: 32 }} />
+      </View>
 
-      <Text style={styles.label}>Dish Name</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Enter dish name"
-        value={name}
-        onChangeText={setName}
-      />
 
-      <Text style={styles.label}>Description</Text>
-      <TextInput
-        style={[styles.input, { height: 80 }]}
-        placeholder="Enter description"
-        multiline
-        value={description}
-        onChangeText={setDescription}
-      />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingBottom: 220,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text
+          style={[
+            styles.subtitle,
+            { color: themeStyles.muted, marginBottom: 16 },
+          ]}
+        >
+          Share an eatery so others can discover it.
+        </Text>
 
-      <Text style={styles.label}>Category</Text>
-      <View style={styles.categoryContainer}>
-        {categories.map((cat) => (
+
+        {/* Photo */}
+        <Text style={[styles.label, { color: themeStyles.text }]}>
+          Photo <Text style={{ color: "#ff6247" }}>*</Text>
+        </Text>
+        <View
+          style={[
+            styles.photoBox,
+            { backgroundColor: themeStyles.card },
+          ]}
+        >
+          {imageUri ? (
+            <Image
+              source={{ uri: imageUri }}
+              style={styles.photoImage}
+            />
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              <Ionicons
+                name="image-outline"
+                size={36}
+                color={themeStyles.muted}
+              />
+              <Text
+                style={{
+                  color: themeStyles.muted,
+                  marginTop: 6,
+                  fontSize: 13,
+                }}
+              >
+                No image selected
+              </Text>
+            </View>
+          )}
+        </View>
+
+
+        <View style={styles.photoButtonsRow}>
           <TouchableOpacity
-            key={cat}
-            style={[
-              styles.categoryButton,
-              category === cat && styles.categorySelected,
-            ]}
-            onPress={() => setCategory(cat)}
+            style={styles.photoButton}
+            onPress={() => pickImage(false)}
           >
-            <Text
-              style={[
-                styles.categoryText,
-                category === cat && { color: "#fff" },
-              ]}
-            >
-              {cat}
-            </Text>
+            <Ionicons
+              name="images-outline"
+              size={18}
+              color="#fff"
+            />
+            <Text style={styles.photoButtonText}>Gallery</Text>
           </TouchableOpacity>
-        ))}
-      </View>
+          <TouchableOpacity
+            style={styles.photoButton}
+            onPress={() => pickImage(true)}
+          >
+            <Ionicons
+              name="camera-outline"
+              size={18}
+              color="#fff"
+            />
+            <Text style={styles.photoButtonText}>Camera</Text>
+          </TouchableOpacity>
+        </View>
 
-      <Text style={styles.label}>Dish Image</Text>
-      <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
-        {image ? (
-          <Image source={{ uri: image }} style={styles.imagePreview} resizeMode="cover" />
-        ) : (
-          <Text style={styles.imageText}>Tap to select image</Text>
+
+        {/* Dish name */}
+        <Text
+          style={[
+            styles.label,
+            { color: themeStyles.text, marginTop: 16 },
+          ]}
+        >
+          Dish name <Text style={{ color: "#ff6247" }}>*</Text>
+        </Text>
+        <TextInput
+          style={[
+            styles.input,
+            {
+              backgroundColor: themeStyles.card,
+              color: themeStyles.text,
+            },
+          ]}
+          placeholder="e.g. Tonkotsu Ramen"
+          placeholderTextColor={themeStyles.muted}
+          value={name}
+          onChangeText={setName}
+        />
+
+
+        {/* Description */}
+        <Text
+          style={[
+            styles.label,
+            { color: themeStyles.text, marginTop: 10 },
+          ]}
+        >
+          Description
+        </Text>
+        <TextInput
+          style={[
+            styles.input,
+            styles.inputMultiline,
+            {
+              backgroundColor: themeStyles.card,
+              color: themeStyles.text,
+            },
+          ]}
+          placeholder="What makes this dish special?"
+          placeholderTextColor={themeStyles.muted}
+          value={description}
+          multiline
+          onChangeText={setDescription}
+        />
+
+
+        {/* Category */}
+        <Text
+          style={[
+            styles.label,
+            { color: themeStyles.text, marginTop: 10 },
+          ]}
+        >
+          Category
+        </Text>
+        <TextInput
+          style={[
+            styles.input,
+            {
+              backgroundColor: themeStyles.card,
+              color: themeStyles.text,
+            },
+          ]}
+          placeholder="e.g. Filipino, Japanese, Dessert"
+          placeholderTextColor={themeStyles.muted}
+          value={category}
+          onChangeText={setCategory}
+        />
+
+
+        {/* Place name */}
+        <Text
+          style={[
+            styles.label,
+            { color: themeStyles.text, marginTop: 10 },
+          ]}
+        >
+          Place name{" "}
+          <Text style={{ color: "#ff6247" }}>* </Text>
+          <Text
+            style={{ color: themeStyles.muted, fontSize: 12 }}
+          >
+            (restaurant / eatery)
+          </Text>
+        </Text>
+        <TextInput
+          style={[
+            styles.input,
+            {
+              backgroundColor: themeStyles.card,
+              color: themeStyles.text,
+            },
+          ]}
+          placeholder="e.g. Ramen Nagi Greenbelt"
+          placeholderTextColor={themeStyles.muted}
+          value={placeName}
+          onChangeText={setPlaceName}
+        />
+
+
+        {/* Address */}
+        <Text
+          style={[
+            styles.label,
+            { color: themeStyles.text, marginTop: 10 },
+          ]}
+        >
+          Address
+        </Text>
+        <TextInput
+          style={[
+            styles.input,
+            {
+              backgroundColor: themeStyles.card,
+              color: themeStyles.text,
+            },
+          ]}
+          placeholder="e.g. Greenbelt 3, Makati, Metro Manila"
+          placeholderTextColor={themeStyles.muted}
+          value={address}
+          onChangeText={setAddress}
+        />
+
+
+        {/* Location button */}
+        <TouchableOpacity
+          style={[
+            styles.locationButton,
+            {
+              backgroundColor: "#ff6247",
+              borderColor: "#ff6247",
+            },
+          ]}
+          onPress={handleChooseLocation}
+          activeOpacity={0.9}
+        >
+          {status === "requesting" ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="map-outline" size={16} color="#fff" />
+              <Text style={styles.locationButtonText}>
+                Choose location on map
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+
+        {coords && (
+          <Text
+            style={[
+              styles.helperText,
+              { color: themeStyles.muted },
+            ]}
+          >
+            Selected coordinates: {coords.latitude.toFixed(4)},{" "}
+            {coords.longitude.toFixed(4)}
+          </Text>
         )}
-      </TouchableOpacity>
 
-      <View style={styles.buttonContainer}>
-        <Button title="Add Dish" color="#ff6247" onPress={handleAddDish} />
-      </View>
-      <View style={styles.buttonContainer}>
-        <Button title="Cancel" color="#888" onPress={() => navigation.goBack()} />
-      </View>
-    </ScrollView>
+
+        {!coords && (
+          <Text
+            style={[
+              styles.helperText,
+              { color: themeStyles.muted },
+            ]}
+          >
+            Optional: choose a map location so people can find this
+            place.
+          </Text>
+        )}
+
+
+        {/* Submit */}
+        <TouchableOpacity
+          style={[
+            styles.submitButton,
+            { opacity: submitting ? 0.7 : 1 },
+          ]}
+          onPress={handleSubmit}
+          disabled={submitting}
+        >
+          {submitting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.submitButtonText}>
+              Post dish
+            </Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
   );
-}
+};
+
+
+export default AddDishScreen;
+
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    paddingBottom: 50,
-    backgroundColor: "#fff",
-    flexGrow: 1,
+  container: { flex: 1 },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 4,
   },
-  heading: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 20,
-    alignSelf: "center",
+  backButton: {
+    padding: 4,
+    marginRight: 4,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: 13,
   },
   label: {
-    fontSize: 16,
-    marginVertical: 8,
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 4,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: "#f9f9f9",
-  },
-  categoryContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginVertical: 8,
-  },
-  categoryButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#ff6247",
-    marginRight: 10,
-    marginBottom: 10,
-  },
-  categorySelected: {
-    backgroundColor: "#ff6247",
-  },
-  categoryText: {
-    color: "#ff6247",
-    fontSize: 14,
-  },
-  imagePicker: {
-    height: 180,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: "#ddd",
+  photoBox: {
+    borderRadius: 16,
+    height: 200,
+    overflow: "hidden",
     justifyContent: "center",
     alignItems: "center",
-    marginVertical: 10,
-    backgroundColor: "#f0f0f0",
   },
-  imageText: { color: "#888" },
-  imagePreview: { width: "100%", height: "100%", borderRadius: 15 },
-  buttonContainer: { marginVertical: 8 },
+  photoImage: {
+    width: "100%",
+    height: "100%",
+  },
+  photoPlaceholder: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  photoButtonsRow: {
+    flexDirection: "row",
+    marginTop: 10,
+  },
+  photoButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#333",
+    borderRadius: 999,
+    paddingVertical: 10,
+    marginRight: 8,
+  },
+  photoButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+    marginLeft: 6,
+  },
+  input: {
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  inputMultiline: {
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  locationButton: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 10,
+  },
+  locationButtonText: {
+    color: "#fff",
+    marginLeft: 6,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  helperText: {
+    fontSize: 11,
+    marginTop: 4,
+  },
+  submitButton: {
+    marginTop: 22,
+    backgroundColor: "#ff6247",
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  submitButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
 });
+
+
+
+
