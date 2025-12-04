@@ -232,7 +232,7 @@ const SettingsScreen = () => {
                 { color: themeStyles?.muted || "#aaa", marginTop: 4 },
               ]}
             >
-              Developed by: Your Group Name
+              Developed by: Group 6
             </Text>
             <Text
               style={[

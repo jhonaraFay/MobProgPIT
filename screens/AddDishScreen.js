@@ -226,7 +226,7 @@ const AddDishScreen = () => {
 
         {/* Photo */}
         <Text style={[styles.label, { color: themeStyles.text }]}>
-          Photo <Text style={{ color: "#ff6247" }}>*</Text>
+          Photo <Text style={{ color: "#47acff" }}>*</Text>
         </Text>
         <View
           style={[

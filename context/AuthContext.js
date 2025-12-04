@@ -4,7 +4,7 @@ import React, { createContext, useState } from "react";
 export const AuthContext = createContext();
 
 const DEFAULT_BIO =
-  "Sharing my favorite Filipino & Japanese dishes 🍣🍜";
+  "Sharing my favorite Filipino & other local dishes 🍽️😋🍛";
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
